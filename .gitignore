@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables & secrets
+.env
+**/.env
+*.env.local
+
+# Production build outputs
+frontend/dist/
+dist/
+
+# Backend uploads (keep directory, ignore dynamic uploads)
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/sample_*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+implementation_plan.md
