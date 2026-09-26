@@ -48,7 +48,7 @@
   background: #94a3b8;
 }
 
-/* Modern Legal Surface & Card Utilities (Inspired by Clio & LegalEase) */
+/* Maintain original styles */
 .legal-card {
   background: #ffffff;
   border: 1px solid #e7e5e4;
@@ -56,36 +56,17 @@
   color: #0f172a;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
 .legal-card:hover {
   border-color: #cbd5e1;
   box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
   transform: translateY(-1px);
 }
-
-.legal-card-gold {
-  background: #ffffff;
-  border: 1px solid #e7e5e4;
-  border-top: 3px solid #854d0e;
-  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04);
-  color: #0f172a;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.legal-card-gold:hover {
-  border-color: #cbd5e1;
-  border-top-color: #713f12;
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06);
-  transform: translateY(-1px);
-}
-
 .glass-panel {
   background: #ffffff;
   border: 1px solid #e7e5e4;
   box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04);
   color: #0f172a;
 }
-
 .glass-emergency {
   background: #fff5f5;
   border: 1px solid #fecaca;
@@ -94,21 +75,10 @@
 }
 
 /* Palette Tokens */
-.text-navy {
-  color: #0f172a;
-}
-
-.text-gold {
-  color: #854d0e;
-}
-
-.bg-cream {
-  background-color: #fcfbf9;
-}
-
-.bg-cream-subtle {
-  background-color: #f7f5f0;
-}
+.text-navy { color: #0f172a; }
+.text-gold { color: #854d0e; }
+.bg-cream { background-color: #fcfbf9; }
+.bg-cream-subtle { background-color: #f7f5f0; }
 
 /* High Contrast Override for Form Controls */
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), 

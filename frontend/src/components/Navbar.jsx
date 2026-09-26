@@ -18,7 +18,8 @@ import {
   Globe, 
   Check, 
   LogIn,
-  MoreHorizontal
+  MoreHorizontal,
+  Languages
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -66,21 +67,25 @@ export const Navbar = ({ currentTab, setCurrentTab, onOpenAuth, onOpenVoiceModal
     });
   }
 
+  if (user?.role === 'teacher') {
+    primaryNavItems.push({
+      id: 'teacher-dashboard',
+      label: 'Teacher Studio',
+      icon: Video,
+      isSpecial: true
+    });
+  }
+
   primaryNavItems.push(
     { id: 'case-intelligence', label: 'Case Dossiers', icon: Briefcase },
     { id: 'ai-assistant', label: 'Statutory AI', icon: Scale },
     { id: 'lawyers', label: 'Advocates', icon: UserCheck },
+    { id: 'education-hub', label: 'Education Hub', icon: BookOpen },
     { id: 'documents', label: 'Legal Drafts', icon: FileText }
   );
 
   // Secondary tools housed in the "More" dropdown
   const secondaryNavItems = [
-    { 
-      id: 'consultations', 
-      label: 'My Consultations', 
-      description: 'Scheduled hearings & active video sessions', 
-      icon: Video 
-    },
     { 
       id: 'evidence', 
       label: 'Evidence Locker (Sec 65B)', 
@@ -88,9 +93,9 @@ export const Navbar = ({ currentTab, setCurrentTab, onOpenAuth, onOpenVoiceModal
       icon: FolderLock 
     },
     { 
-      id: 'map', 
-      label: 'Emergency Radar', 
-      description: 'Geo-located police stations & legal clinics', 
+      id: 'safetymap', 
+      label: 'Live Safety GPS & Routes', 
+      description: 'Track safe routes and high-crime heatmaps', 
       icon: MapPin 
     },
     { 
@@ -99,6 +104,12 @@ export const Navbar = ({ currentTab, setCurrentTab, onOpenAuth, onOpenVoiceModal
       description: 'BNS, BNSS, POSH & Constitutional law', 
       icon: BookOpen 
     },
+    {
+      id: 'translator',
+      label: 'AR Legalese Translator',
+      description: 'Scan documents to plain simple English',
+      icon: Languages
+    }
   ];
 
   if (user?.role === 'admin') {

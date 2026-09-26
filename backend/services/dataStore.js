@@ -119,6 +119,26 @@ const store = {
     }
   ],
   emergencyResources: seedEmergencyResources,
+  crimeZones: [
+    {
+      _id: 'zone_001',
+      name: 'Central Avenue & Metro Station Path',
+      type: 'High Risk',
+      description: 'Multiple reports of snatching and harassment after 9 PM. Poor street lighting.',
+      lat: 28.6135,
+      lng: 77.2095,
+      radiusMeters: 300,
+    },
+    {
+      _id: 'zone_002',
+      name: 'North Ring Road Underpass',
+      type: 'Severe Risk',
+      description: 'Isolated underpass with no CCTV coverage. Avoid walking alone.',
+      lat: 28.6150,
+      lng: 77.2150,
+      radiusMeters: 200,
+    }
+  ],
 
   // Case Intelligence Collections
   cases: [

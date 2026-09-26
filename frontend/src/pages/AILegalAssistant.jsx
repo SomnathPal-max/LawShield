@@ -137,7 +137,29 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
   const [lastAnalyzedQuery, setLastAnalyzedQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [checkedRights, setCheckedRights] = useState({});
+  const [revealStep, setRevealStep] = useState(0);
+  
   const resultRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const whisperWorkerRef = useRef(null);
+
+  // Web Speech API Ref
+  const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    if (analysis) {
+      setRevealStep(0);
+      const timers = [
+        setTimeout(() => setRevealStep(1), 500),
+        setTimeout(() => setRevealStep(2), 1500),
+        setTimeout(() => setRevealStep(3), 3000),
+        setTimeout(() => setRevealStep(4), 4500),
+        setTimeout(() => setRevealStep(5), 5500),
+      ];
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [analysis]);
 
   const scrollToResults = () => {
     setTimeout(() => {
@@ -203,48 +225,72 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
     setCheckedRights({});
   };
 
-  // Speech Recognition with Web Speech API
+  // Instant Browser-based Voice Transcription
   const toggleSpeechRecognition = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      showToast('Speech recognition is not supported in this browser.', 'error');
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
       return;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (isListening) {
-      setIsListening(false);
+    if (!SpeechRecognition) {
+      showToast('Your browser does not support instant voice recognition. Try Chrome or Edge.', 'error');
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-IN';
+    const language = document.getElementById('whisperLang')?.value || 'hi-IN';
+    
+    // Map simplified language values to standard BCP 47 codes
+    const langMap = {
+      'hindi': 'hi-IN',
+      'bengali': 'bn-IN',
+      'marathi': 'mr-IN',
+      'telugu': 'te-IN',
+      'tamil': 'ta-IN',
+      'english': 'en-IN'
+    };
+    const bcp47Lang = langMap[language] || 'en-IN';
 
-      recognition.onstart = () => {
-        setIsListening(true);
-        showToast('🎙️ Listening... speak your legal query clearly.', 'info');
-      };
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = bcp47Lang;
+    recognitionRef.current = recognition;
 
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setProblemText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        setIsListening(false);
-      };
+    let finalTranscript = problemText ? problemText + ' ' : '';
 
-      recognition.onerror = () => {
-        setIsListening(false);
-      };
+    recognition.onstart = () => {
+      setIsListening(true);
+      showToast('🎙️ Listening... Speak now.', 'info');
+    };
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+          setProblemText(finalTranscript);
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+          setProblemText(finalTranscript + interimTranscript);
+        }
+      }
+    };
 
-      recognition.start();
-    } catch (e) {
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error', event.error);
       setIsListening(false);
-    }
+      showToast('Voice detection stopped or encountered an error.', 'error');
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
   };
 
   const getRiskBadge = (level) => {
@@ -253,45 +299,39 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
         return {
           bg: 'bg-red-50 text-red-950 border-red-300',
           dot: 'bg-red-600 animate-ping',
-          label: 'CRITICAL EMERGENCY',
+          label: 'CRITICAL EMERGENCY'
         };
       case 'HIGH':
         return {
-          bg: 'bg-rose-50 text-rose-950 border-rose-300',
-          dot: 'bg-rose-600',
-          label: 'HIGH RISK SITUATION',
+          bg: 'bg-orange-50 text-orange-950 border-orange-300',
+          dot: 'bg-orange-600 animate-ping',
+          label: 'HIGH RISK (CRIMINAL)'
         };
       case 'MEDIUM':
         return {
-          bg: 'bg-amber-50 text-amber-950 border-amber-300',
-          dot: 'bg-amber-600',
-          label: 'MODERATE RISK / CIVIL INFRINGEMENT',
+          bg: 'bg-blue-50 text-blue-950 border-blue-300',
+          dot: 'bg-blue-600',
+          label: 'MODERATE RISK (CIVIL)'
         };
+      case 'LOW':
       default:
         return {
-          bg: 'bg-stone-100 text-slate-900 border-stone-300',
-          dot: 'bg-slate-700',
-          label: 'STANDARD LEGAL ADVISORY',
+          bg: 'bg-emerald-50 text-emerald-950 border-emerald-300',
+          dot: 'bg-emerald-600',
+          label: 'LOW RISK (INFORMATIONAL)'
         };
     }
   };
 
   const quickPresets = [
-    { label: 'Workplace Harassment (POSH)', query: 'I am facing unwelcome remarks, hostile treatment, and threats to my job from my manager at work.' },
-    { label: 'Security Deposit Withheld', query: 'My landlord has evicted me and is refusing to return my security deposit of ₹45,000 without valid reason.' },
-    { label: 'Domestic Violence & Threats', query: 'My in-laws and husband are abusing me physically and verbally, and threatening to throw me out of the matrimonial home.' },
-    { label: 'Cyber Stalking & Leaked Photos', query: 'Someone created a fake profile with my pictures and phone number on Instagram and is blackmailing me.' },
-    { label: 'Unpaid Wages & Breach of Contract', query: 'My employer has not cleared my salary for the last 3 months despite written reminders and promises.' },
+    { label: "Landlord not returning deposit", query: "My landlord in Bangalore is refusing to return my Rs 1 lakh security deposit even after 2 months of vacating." },
+    { label: "Workplace Harassment", query: "A senior manager at my office is constantly sending inappropriate WhatsApp messages and threatening my appraisal if I report." },
+    { label: "Cyber Extortion", query: "Someone morphed my Facebook photos and is demanding money, threatening to send them to my family." },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-200">
-      {/* Header */}
-      <div className="text-center space-y-2.5">
-        <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-[#854d0e] text-xs font-extrabold shadow-xs">
-          <Sparkles size={14} className="text-[#854d0e]" />
-          <span>Statutory AI Legal Advisory & Risk Engine</span>
-        </div>
+    <div className="flex-1 overflow-y-auto pt-20 pb-28 px-4 sm:px-6 w-full max-w-4xl mx-auto space-y-6">
+      <div className="text-center space-y-3 pt-6 pb-2">
         <h1 className="text-3xl sm:text-4xl font-black text-[#0f172a] tracking-tight">
           AI Legal & Safety Assistant
         </h1>
@@ -313,6 +353,28 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
 
           <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
             <div className="flex items-center space-x-2">
+              <select
+                id="whisperLang"
+                className="bg-stone-100 border border-stone-300 text-slate-900 text-xs font-bold rounded-xl px-2 py-2 focus:outline-none shadow-xs cursor-pointer"
+                onChange={(e) => {
+                  if (whisperWorkerRef.current) {
+                    whisperWorkerRef.current.language = e.target.value;
+                  }
+                }}
+              >
+                <option value="english">English</option>
+                <option value="hindi">Hindi</option>
+                <option value="bengali">Bengali</option>
+                <option value="marathi">Marathi</option>
+                <option value="telugu">Telugu</option>
+                <option value="tamil">Tamil</option>
+                <option value="urdu">Urdu</option>
+                <option value="gujarati">Gujarati</option>
+                <option value="kannada">Kannada</option>
+                <option value="malayalam">Malayalam</option>
+                <option value="punjabi">Punjabi</option>
+              </select>
+
               <button
                 type="button"
                 onClick={toggleSpeechRecognition}
@@ -323,7 +385,7 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
                 }`}
               >
                 {isListening ? <MicOff size={14} /> : <Mic size={14} />}
-                <span>{isListening ? 'Stop Listening' : 'Voice Dictate'}</span>
+                <span>{isListening ? 'Stop Recording' : 'Voice Dictate'}</span>
               </button>
 
               {problemText && (
@@ -454,123 +516,161 @@ export const AILegalAssistant = ({ setCurrentTab }) => {
           )}
 
           {/* Main Structured Result Card */}
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border-2 border-stone-200 space-y-6 shadow-sm">
-            {/* Top Bar: Risk badge & Topic */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-5">
-              <div>
-                <span className="text-xs text-[#854d0e] font-extrabold uppercase tracking-wider">
-                  Identified Legal Area
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-[#0f172a] mt-0.5">
-                  {analysis.legalTopic}
-                </h2>
-              </div>
-
-              {/* Dynamic Risk Meter */}
-              {(() => {
-                const badge = getRiskBadge(analysis.riskLevel);
-                return (
-                  <div className={`inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full border text-xs font-black ${badge.bg}`}>
-                    <span className={`w-2 h-2 rounded-full ${badge.dot}`}></span>
-                    <span>{badge.label}</span>
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border-2 border-stone-200 space-y-6 shadow-sm min-h-[400px]">
+            {revealStep >= 1 && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-5">
+                  <div>
+                    <span className="text-xs text-[#854d0e] font-extrabold uppercase tracking-wider">
+                      Identified Legal Area
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-[#0f172a] mt-0.5">
+                      {analysis.legalTopic}
+                    </h2>
                   </div>
-                );
-              })()}
-            </div>
-
-            {/* Applicable Statutory Provisions */}
-            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-1">
-              <div className="flex items-center space-x-2 text-xs font-black text-[#854d0e] uppercase tracking-wider">
-                <Scale size={14} />
-                <span>Statutory Sections & Acts</span>
+                  {(() => {
+                    const badge = getRiskBadge(analysis.riskLevel);
+                    return (
+                      <div className={`inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full border text-xs font-black ${badge.bg}`}>
+                        <span className={`w-2 h-2 rounded-full ${badge.dot}`}></span>
+                        <span>{badge.label}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-1 mt-6">
+                  <div className="flex items-center space-x-2 text-xs font-black text-[#854d0e] uppercase tracking-wider">
+                    <Scale size={14} />
+                    <span>Statutory Sections & Acts</span>
+                  </div>
+                  <p className="text-sm font-bold text-[#0f172a] font-mono">
+                    {analysis.relevantLaw}
+                  </p>
+                </div>
               </div>
-              <p className="text-sm font-bold text-[#0f172a] font-mono">
-                {analysis.relevantLaw}
-              </p>
-            </div>
+            )}
 
-            {/* Plain-English Breakdown */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
-                Plain-English Legal Explanation
-              </h3>
-              <p className="text-sm text-slate-800 leading-relaxed bg-stone-50 p-4 rounded-2xl border border-stone-200 font-medium">
-                {analysis.explanation}
-              </p>
-            </div>
+            {revealStep >= 2 && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
+                  Plain-English Legal Explanation
+                </h3>
+                <p className="text-sm text-slate-800 leading-relaxed bg-stone-50 p-4 rounded-2xl border border-stone-200 font-medium">
+                  {analysis.explanation}
+                </p>
+              </div>
+            )}
 
-            {/* Actionable Rights Checklist */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
-                Your Enforceable Rights Checklist
-              </h3>
-              <div className="space-y-2">
-                {analysis.rights.map((right, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setCheckedRights(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                    className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition ${
-                      checkedRights[idx]
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
-                        : 'bg-stone-50 border-stone-200 text-slate-900 hover:border-stone-300 font-semibold'
-                    }`}
-                  >
-                    <CheckCircle2
-                      size={18}
-                      className={`mt-0.5 shrink-0 ${
-                        checkedRights[idx] ? 'text-emerald-700' : 'text-slate-400'
+            {revealStep >= 3 && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
+                  Your Enforceable Rights Checklist
+                </h3>
+                <div className="space-y-2">
+                  {analysis.rights.map((right, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setCheckedRights(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                      className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition ${
+                        checkedRights[idx]
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                          : 'bg-stone-50 border-stone-200 text-slate-900 hover:border-stone-300 font-semibold'
                       }`}
-                    />
-                    <span className="text-xs leading-relaxed">{right}</span>
+                    >
+                      <CheckCircle2
+                        size={18}
+                        className={`mt-0.5 shrink-0 ${
+                          checkedRights[idx] ? 'text-emerald-700' : 'text-slate-400'
+                        }`}
+                      />
+                      <span className="text-xs leading-relaxed">{right}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {revealStep >= 4 && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
+                  Recommended Immediate Next Steps
+                </h3>
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 leading-relaxed font-medium">
+                  {analysis.recommendedAction}
+                </div>
+              </div>
+            )}
+
+            {revealStep >= 5 && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                {analysis.recommendedLawyers && analysis.recommendedLawyers.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-stone-200">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a] flex items-center space-x-1.5">
+                      <Sparkles size={14} className="text-[#854d0e]" />
+                      <span>AI-Matched Legal Experts for this Specific Case</span>
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {analysis.recommendedLawyers.map((lawyer) => (
+                        <div key={lawyer._id} className="bg-white border border-amber-200 rounded-2xl p-4 flex flex-col justify-between shadow-xs hover:shadow-md transition">
+                          <div className="flex space-x-3 items-start">
+                            <img src={lawyer.avatar} alt={lawyer.name} className="w-12 h-12 rounded-xl object-cover border border-stone-200" />
+                            <div>
+                              <h4 className="text-sm font-extrabold text-[#0f172a]">{lawyer.name}</h4>
+                              <p className="text-[10px] text-[#854d0e] font-bold uppercase tracking-wider">{lawyer.specialization}</p>
+                              <div className="flex items-center space-x-2 mt-1.5">
+                                <span className="text-xs font-black text-amber-600 flex items-center">⭐ {lawyer.rating} <span className="text-stone-400 font-medium ml-1">({lawyer.reviewsCount})</span></span>
+                                <span className="text-stone-300">|</span>
+                                <span className="text-xs font-bold text-slate-700">⚖️ {lawyer.experience} Yrs</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 p-2 bg-stone-50 rounded-lg border border-stone-200 text-xs font-medium text-slate-800">
+                            🏆 <span className="font-bold text-slate-900">{lawyer.totalCasesSolved}</span> Total Cases Solved
+                          </div>
+                          <button
+                            onClick={() => setCurrentTab('consult')}
+                            className="mt-3 w-full bg-[#0f172a] hover:bg-[#1e293b] text-white text-xs font-bold py-2 rounded-xl transition"
+                          >
+                            Book Consultation
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                )}
+                
+                <div className="pt-6 mt-4 border-t border-stone-200 flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('lawshield_prefill_complaint', JSON.stringify({
+                        topic: analysis.legalTopic,
+                        details: problemText,
+                      }));
+                      setCurrentTab('documents');
+                    }}
+                    className="bg-[#0f172a] hover:bg-[#1e293b] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-1.5 shadow-xs"
+                  >
+                    <FileText size={14} />
+                    <span>Draft Formal Complaint / Notice</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentTab('lawyers')}
+                    className="bg-[#854d0e] hover:bg-[#713f12] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-1.5 shadow-xs"
+                  >
+                    <Scale size={14} />
+                    <span>Consult Empanelled Advocate</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentTab('evidence')}
+                    className="bg-stone-100 hover:bg-stone-200 text-slate-900 text-xs font-bold px-4 py-2.5 rounded-xl border border-stone-300 transition flex items-center space-x-1.5 shadow-xs"
+                  >
+                    <FolderLock size={14} />
+                    <span>Save Evidence to Vault</span>
+                  </button>
+                </div>
               </div>
-            </div>
-
-            {/* Recommended Action Plan */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-black uppercase tracking-wider text-[#0f172a]">
-                Recommended Immediate Next Steps
-              </h3>
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 leading-relaxed font-medium">
-                {analysis.recommendedAction}
-              </div>
-            </div>
-
-            {/* Action CTAs */}
-            <div className="pt-4 border-t border-stone-200 flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => {
-                  localStorage.setItem('lawshield_prefill_complaint', JSON.stringify({
-                    topic: analysis.legalTopic,
-                    details: problemText,
-                  }));
-                  setCurrentTab('documents');
-                }}
-                className="bg-[#0f172a] hover:bg-[#1e293b] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <FileText size={14} />
-                <span>Draft Formal Complaint / Notice</span>
-              </button>
-
-              <button
-                onClick={() => setCurrentTab('lawyers')}
-                className="bg-[#854d0e] hover:bg-[#713f12] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <Scale size={14} />
-                <span>Consult Empanelled Advocate</span>
-              </button>
-
-              <button
-                onClick={() => setCurrentTab('evidence')}
-                className="bg-stone-100 hover:bg-stone-200 text-slate-900 text-xs font-bold px-4 py-2.5 rounded-xl border border-stone-300 transition flex items-center space-x-1.5 shadow-xs"
-              >
-                <FolderLock size={14} />
-                <span>Save Evidence to Vault</span>
-              </button>
-            </div>
-
-            {/* Disclaimer */}
+            )}
+            
             <p className="text-xs text-slate-700 italic leading-relaxed pt-2 font-medium">
               {analysis.disclaimer}
             </p>

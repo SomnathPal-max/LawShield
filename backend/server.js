@@ -21,6 +21,7 @@ const lawsRoutes = require('./routes/lawsRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const caseRoutes = require('./routes/caseRoutes');
+const courseRoutes = require('./routes/courseRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -70,6 +71,7 @@ app.use('/api/laws', lawsRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cases', caseRoutes);
+app.use('/api/courses', courseRoutes);
 
 // Socket.IO Real-Time & WebRTC Signaling
 const onlineUsers = new Map(); // userId -> socketId
@@ -167,7 +169,18 @@ io.on('connection', (socket) => {
   });
 });
 
-// Global 404 Handler
+// Serve Frontend static files
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDistPath));
+
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api')) {
+    return next();
+  }
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
+
+// Global 404 Handler for API
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route not found: ${req.method} ${req.url}` });
 });

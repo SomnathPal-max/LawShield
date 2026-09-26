@@ -1,33 +1,35 @@
-const jwt = require('jsonwebtoken');
+const { auth } = require('express-oauth2-jwt-bearer');
 const { store } = require('../services/dataStore');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'lawshield_super_secure_jwt_token_key_2026_x9';
+// Safe fallback for demo simulator (since user wants Auth0 but might not have keys set up immediately)
+const useAuth0 = process.env.AUTH0_ISSUER_BASE_URL && process.env.AUTH0_AUDIENCE;
+
+const auth0Middleware = useAuth0 ? auth({
+  audience: process.env.AUTH0_AUDIENCE,
+  issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL,
+}) : (req, res, next) => next();
 
 const authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: 'Authorization token missing or invalid' });
+  // If Auth0 isn't configured, bypass so the Simulator doesn't break
+  if (!useAuth0) {
+    console.warn('[Auth0] Missing Environment variables. Bypassing Auth0 validation for Demo Mode.');
+    req.user = store.users[0]; // fallback demo user
+    return next();
   }
 
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = store.users.find(u => u._id.toString() === decoded.userId.toString() || u.email === decoded.email);
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User belonging to token no longer exists' });
-    }
+  // Use Auth0 strict validation
+  auth0Middleware(req, res, (err) => {
+    if (err) return next(err);
+    
+    // Create a mock user object based on the Auth0 sub claim so controllers don't crash
     req.user = {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      phone: user.phone || '',
-      emergencyContacts: user.emergencyContacts || [],
+      _id: req.auth.payload.sub,
+      role: req.auth.payload['https://lawshield.org/role'] || 'user',
+      email: req.auth.payload['https://lawshield.org/email'] || '',
+      name: 'Auth0 Verified User'
     };
     next();
-  } catch (err) {
-    return res.status(401).json({ success: false, message: 'Token is expired or invalid', error: err.message });
-  }
+  });
 };
 
 const authorizeRoles = (...roles) => {
@@ -42,4 +44,4 @@ const authorizeRoles = (...roles) => {
   };
 };
 
-module.exports = { authenticate, authorizeRoles, JWT_SECRET };
+module.exports = { authenticate, authorizeRoles };

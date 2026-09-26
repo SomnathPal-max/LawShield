@@ -20,6 +20,11 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { CaseIntelligencePage } from './pages/CaseIntelligencePage';
 import { AuthPage } from './pages/AuthPage';
 import { LawyerDashboard } from './pages/LawyerDashboard';
+import { EducationHub } from './pages/EducationHub';
+import { TeacherDashboard } from './pages/TeacherDashboard';
+import LiveSafetyMap from './pages/LiveSafetyMap';
+import { DecoyMode } from './components/DecoyMode';
+import { LegaleseTranslator } from './pages/LegaleseTranslator';
 
 const MainApp = () => {
   const [currentTab, setCurrentTab] = useState('home');
@@ -45,22 +50,29 @@ const MainApp = () => {
         return <CaseIntelligencePage setCurrentTab={setCurrentTab} />;
       case 'ai-assistant':
         return <AILegalAssistant setCurrentTab={setCurrentTab} />;
+      case 'translator':
+        return <LegaleseTranslator />;
       case 'lawyer-dashboard':
         return <LawyerDashboard setCurrentTab={setCurrentTab} />;
       case 'lawyers':
-        return <LawyerDirectory setCurrentTab={setCurrentTab} />;
       case 'consultations':
-        return <ConsultationsPage setCurrentTab={setCurrentTab} />;
+        return <LawyerDirectory setCurrentTab={setCurrentTab} initialSection={currentTab === 'consultations' ? 'consultations' : 'directory'} />;
       case 'documents':
         return <DocumentGenerator />;
       case 'evidence':
         return <EvidenceVault />;
       case 'map':
         return <NearbyHelpMap />;
+      case 'safetymap':
+        return <LiveSafetyMap />;
       case 'rights':
         return <LegalLibrary setCurrentTab={setCurrentTab} />;
       case 'admin':
         return <AdminDashboard />;
+      case 'education-hub':
+        return <EducationHub />;
+      case 'teacher-dashboard':
+        return <TeacherDashboard setCurrentTab={setCurrentTab} />;
       default:
         return (
           <LandingPage 
@@ -110,6 +122,9 @@ const MainApp = () => {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
       />
+
+      {/* Stealth / Decoy Mode (Anti-Coercion UI) */}
+      <DecoyMode />
     </div>
   );
 };

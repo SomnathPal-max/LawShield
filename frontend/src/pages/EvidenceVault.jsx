@@ -10,6 +10,7 @@ import {
   File, 
   ShieldCheck, 
   AlertCircle, 
+  AlertTriangle,
   Download, 
   ExternalLink,
   Lock,
@@ -206,11 +207,24 @@ export const EvidenceVault = () => {
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
-                  <div className="p-3 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-[#854d0e]">
-                    {getFileIcon(item.fileType)}
+                  <div className="flex space-x-2">
+                    <div className="p-3 rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-[#854d0e]">
+                      {getFileIcon(item.fileType)}
+                    </div>
+                    {item.isForgedOrAI ? (
+                      <div className="flex items-center space-x-1 text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg text-[10px] font-bold h-fit mt-1 cursor-help" title={item.forgeryReason || 'Suspected AI or Forged Media'}>
+                        <AlertTriangle size={12} />
+                        <span>AI / Forged Warning</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-bold h-fit mt-1 cursor-help" title="No AI manipulation detected. EXIF data intact.">
+                        <ShieldCheck size={12} />
+                        <span>Authentic</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-1 flex-wrap justify-end gap-y-1 w-32">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#854d0e] bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200">
                       {item.category}
                     </span>

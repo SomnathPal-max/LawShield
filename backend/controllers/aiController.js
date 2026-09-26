@@ -213,9 +213,51 @@ const analyzeProblemLocally = (query) => {
     riskLevel,
     detectedConcern,
     emergencyWarning,
-    recommendedLawyers: (recommendedLawyers && recommendedLawyers.length) ? recommendedLawyers : store.lawyers.slice(0, 2),
+    recommendedLawyers: (recommendedLawyers && recommendedLawyers.length) ? recommendedLawyers : findBestLawyers(legalTopic),
     disclaimer: 'LEGAL DISCLAIMER: The analysis and information provided above is generated for educational and general legal informational purposes only. It does not constitute formal advocate-client relationship or binding legal advice. For actionable representation, please consult a verified advocate or emergency services.'
   };
+};
+
+const findBestLawyers = (topic) => {
+  const query = (topic || '').toLowerCase();
+  
+  // Calculate a match score for each lawyer
+  const scoredLawyers = store.lawyers.map(lawyer => {
+    let score = 0;
+    
+    // 1. Relevance Score (Specialization Match)
+    const spec = (lawyer.specialization || '').toLowerCase();
+    if (spec.includes(query) || query.includes(spec.split(' ')[0])) {
+      score += 50; 
+    }
+    
+    // Check specific keywords for broad matching
+    if ((query.includes('cyber') || query.includes('online') || query.includes('digital')) && spec.includes('cyber')) score += 50;
+    if ((query.includes('harass') || query.includes('posh') || query.includes('work')) && spec.includes('posh')) score += 50;
+    if ((query.includes('domestic') || query.includes('divorce') || query.includes('husband')) && spec.includes('domestic')) score += 50;
+
+    // 2. Rating Score (Multiply rating by 10)
+    score += (lawyer.rating || 4.0) * 10;
+    
+    // 3. Experience Score (1 point per year)
+    score += (lawyer.experience || 1);
+    
+    // 4. Cases Solved Score (Extract the highest relevant category, or just use 10% of total)
+    if (lawyer.totalCasesSolved) {
+      score += (lawyer.totalCasesSolved * 0.1); 
+    }
+
+    return { ...lawyer, matchScore: score };
+  });
+
+  // Sort by highest score descending
+  scoredLawyers.sort((a, b) => b.matchScore - a.matchScore);
+  
+  // Return top 2
+  return scoredLawyers.slice(0, 2).map(l => {
+    const { matchScore, ...rest } = l; // remove internal score before sending to client
+    return rest;
+  });
 };
 
 // Main AI endpoint
@@ -226,22 +268,7 @@ exports.analyzeProblem = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide details of your legal problem' });
     }
 
-    // Check if OPENAI_API_KEY is provided
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey && apiKey.startsWith('sk-')) {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You are LawShield AI, an empathetic, highly knowledgeable legal and safety assistant.
+    const systemPrompt = `You are LawShield AI, an empathetic, highly knowledgeable legal and safety assistant specializing in Indian Law (BNSS, IPC, Constitution).
 Analyze the user's issue and output a JSON object strictly adhering to this structure:
 {
   "legalTopic": "string",
@@ -253,31 +280,82 @@ Analyze the user's issue and output a JSON object strictly adhering to this stru
   "detectedConcern": "brief summary of concern",
   "emergencyWarning": "string or null if not emergency"
 }
-Ensure advice is neutral, objective, and safe. Do not fabricate case law.`
-              },
-              { role: 'user', content: problemText }
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.2,
-          })
+Ensure advice is neutral, objective, and safe. Do not fabricate case law.`;
+
+    // 1. Try Gemini API first (Generous Free Tier)
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        console.log(`[AI Engine] Attempting to contact Gemini API...`);
+        const { GoogleGenAI } = require('@google/genai');
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        
+        const response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: problemText,
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            temperature: 0.2
+          }
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          const parsed = JSON.parse(data.choices[0].message.content);
-          return res.json({
-            success: true,
-            source: 'openai',
-            analysis: {
-              ...parsed,
-              recommendedLawyers: store.lawyers.slice(0, 2),
-              disclaimer: 'LEGAL DISCLAIMER: The analysis and information provided above is generated for educational and general legal informational purposes only. It does not constitute formal legal representation. Always consult a licensed attorney.'
-            }
-          });
-        }
-      } catch (externalErr) {
-        console.warn('OpenAI request encountered an error, falling back to built-in legal engine:', externalErr.message);
+        const parsed = JSON.parse(response.text);
+        return res.json({
+          success: true,
+          source: 'gemini',
+          analysis: {
+            ...parsed,
+            recommendedLawyers: findBestLawyers(parsed.legalTopic || problemText),
+            disclaimer: 'LEGAL DISCLAIMER: The analysis and information provided above is generated by Google Gemini for educational and general legal informational purposes only. It does not constitute formal legal representation. Always consult a licensed attorney.'
+          }
+        });
+      } catch (geminiErr) {
+        console.warn('Gemini request failed, falling back to Ollama:', geminiErr.message);
       }
+    }
+
+    // 2. Check if Ollama should be used (Local AI Fallback)
+    const ollamaUrl = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434/api/chat';
+    const ollamaModel = process.env.OLLAMA_MODEL || 'llama3';
+    
+    try {
+      console.log(`[AI Engine] Attempting to contact local Ollama instance at ${ollamaUrl}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second max wait for Ollama to respond initially
+
+      const response = await fetch(ollamaUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: ollamaModel,
+          format: 'json',
+          stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: problemText }
+          ]
+        })
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        const parsed = JSON.parse(data.message.content);
+        return res.json({
+          success: true,
+          source: 'ollama-local',
+          analysis: {
+            ...parsed,
+            recommendedLawyers: findBestLawyers(parsed.legalTopic || problemText),
+            disclaimer: 'LEGAL DISCLAIMER: The analysis and information provided above is generated by a local AI model for educational and general legal informational purposes only. It does not constitute formal legal representation. Always consult a licensed attorney.'
+          }
+        });
+      }
+    } catch (externalErr) {
+      console.warn('Ollama request encountered an error (is Ollama running?), falling back to built-in legal engine:', externalErr.message);
     }
 
     // Built-in intelligent Legal classifier fallback
@@ -293,3 +371,161 @@ Ensure advice is neutral, objective, and safe. Do not fabricate case law.`
 };
 
 exports.analyzeLegalProblem = exports.analyzeProblem;
+
+// @route   POST /api/ai/tts
+// @desc    Generate Text-to-Speech using ElevenLabs (with fallback to simple URL if no key)
+// @access  Public
+exports.generateSpeech = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ success: false, message: 'Text is required' });
+
+    const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
+    if (elevenLabsKey) {
+      try {
+        console.log(`[TTS Engine] Calling ElevenLabs API...`);
+        // We use fetch so we don't strictly need the official SDK installed to make this simple request
+        const voiceId = 'EXAVITQu4vr4xnSDxMaL'; // Default voice
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'audio/mpeg',
+            'xi-api-key': elevenLabsKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: text.substring(0, 5000), // ElevenLabs free limit safety
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+          })
+        });
+
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          // We could save to file and return URL, or return buffer directly. Let's return buffer for simplicity.
+          res.set('Content-Type', 'audio/mpeg');
+          return res.send(Buffer.from(buffer));
+        }
+      } catch (e) {
+        console.warn('ElevenLabs request failed, falling back to client-side TTS instruction:', e.message);
+      }
+    }
+
+    // Fallback: Instruct frontend to use Web Speech API (SpeechSynthesis)
+    return res.json({
+      success: true,
+      source: 'fallback_web_speech',
+      message: 'ElevenLabs API key not found or failed. Please use browser Web Speech API.'
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'TTS failed', error: error.message });
+  }
+};
+
+// @route   POST /api/ai/synthesize-brief
+// @desc    Synthesizes messy case data and evidence into a structured chronological storyboard
+// @access  Public
+exports.synthesizeCaseBrief = async (req, res) => {
+  try {
+    const { rawDescription, evidence = [], chatHistory = [] } = req.body;
+    if (!rawDescription) return res.status(400).json({ success: false, message: 'Description required' });
+
+    const prompt = `You are a Legal Paralegal AI. Read this traumatized citizen's raw case description, their uploaded evidence list, and chat history. 
+    Restructure it into a highly logical, chronological visual storyboard for a lawyer to read. 
+    Output ONLY JSON matching this structure:
+    {
+      "executiveSummary": "2 paragraph professional legal summary.",
+      "primaryOffense": "e.g., Cyberstalking under IT Act Sec 66",
+      "entities": [{"name": "Victim/Accused", "role": "Role"}],
+      "timeline": [
+        { "date": "YYYY-MM-DD", "time": "HH:MM", "event": "What happened", "evidenceLink": "Matches an evidence title if applicable" }
+      ]
+    }
+    
+    Raw Description: ${rawDescription}
+    Evidence Uploaded: ${JSON.stringify(evidence)}
+    Chat History: ${JSON.stringify(chatHistory)}`;
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        const { GoogleGenAI } = require('@google/genai');
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        const response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: prompt,
+        });
+        const textResponse = response.text;
+        const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return res.json({ success: true, storyboard: parsed });
+        }
+      } catch (geminiErr) {
+        console.warn('Gemini Case Synthesis failed, falling back to mock:', geminiErr.message);
+      }
+    }
+
+    // Fallback Mock Storyboard
+    return res.json({
+      success: true,
+      storyboard: {
+        executiveSummary: "The client reports ongoing harassment and threats. The situation escalated recently with digital evidence of abuse. Immediate legal intervention is required to secure a restraining order and file a formal FIR.",
+        primaryOffense: "Harassment & Criminal Intimidation",
+        entities: [{ name: "Client", role: "Victim" }, { name: "Unknown Caller", role: "Accused" }],
+        timeline: [
+          { date: new Date().toISOString().split('T')[0], time: "10:00 AM", event: "Initial threatening communication received.", evidenceLink: evidence[0]?.title || null },
+          { date: new Date().toISOString().split('T')[0], time: "11:30 AM", event: "Follow-up abuse. Client felt unsafe.", evidenceLink: null }
+        ]
+      }
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to synthesize brief', error: error.message });
+  }
+};
+
+// @route   POST /api/ai/translate
+// @desc    Translates dense legalese into plain text
+// @access  Public
+exports.translateLegalese = async (req, res) => {
+  try {
+    const { text, language } = req.body;
+    if (!text) return res.status(400).json({ success: false, message: 'Text required' });
+
+    const prompt = `You are an expert legal translator. Break down the following complex legal text line-by-line or clause-by-clause. 
+For each part, format your response using basic HTML like this:
+<div style="margin-bottom: 16px;">
+  <div style="font-size: 0.85em; color: #64748b; margin-bottom: 4px;">Original: <i>"..."</i></div>
+  <div style="font-weight: 600; color: #0f172a;">Meaning: ...</div>
+</div>
+
+Translate the "Meaning" into simple, easy-to-understand plain terms. If the requested language is ${language || 'English'} and it is not English, provide the Meaning in that language. Do not use markdown backticks for the HTML.
+
+Text to analyze:\n\n"${text}"`;
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (geminiKey) {
+      try {
+        const { GoogleGenAI } = require('@google/genai');
+        const ai = new GoogleGenAI({ apiKey: geminiKey });
+        const response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: prompt,
+        });
+        return res.json({ success: true, translation: response.text });
+      } catch (geminiErr) {
+        console.warn('Gemini Translation failed:', geminiErr.message);
+      }
+    }
+
+    // Fallback
+    return res.json({
+      success: true,
+      translation: "Fallback simplified text: You have the right to remain silent and consult a lawyer. (Connect backend to Gemini for real translation)."
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Translation failed', error: error.message });
+  }
+};

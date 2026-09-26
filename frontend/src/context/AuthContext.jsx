@@ -95,9 +95,9 @@ export const AuthProvider = ({ children }) => {
       console.error('Demo login failed', err);
       // Fallback offline preset if backend has not loaded yet
       const fallbackUser = {
-        _id: persona === 'lawyer' ? 'usr_demo_lawyer_001' : persona === 'admin' ? 'usr_demo_admin_001' : 'usr_demo_citizen_001',
-        name: persona === 'lawyer' ? 'Adv. Rajesh Verma' : persona === 'admin' ? 'Meera Nair' : 'Ananya Sharma',
-        email: persona === 'lawyer' ? 'lawyer@lawshield.org' : persona === 'admin' ? 'admin@lawshield.org' : 'citizen@lawshield.org',
+        _id: persona === 'lawyer' ? 'usr_demo_lawyer_001' : persona === 'admin' ? 'usr_demo_admin_001' : persona === 'teacher' ? 'usr_demo_teacher_001' : 'usr_demo_citizen_001',
+        name: persona === 'lawyer' ? 'Adv. Rajesh Verma' : persona === 'admin' ? 'Meera Nair' : persona === 'teacher' ? 'Prof. Vivek Sharma' : 'Ananya Sharma',
+        email: persona === 'lawyer' ? 'lawyer@lawshield.org' : persona === 'admin' ? 'admin@lawshield.org' : persona === 'teacher' ? 'teacher@lawshield.org' : 'citizen@lawshield.org',
         role: persona,
         phone: '+91 98765 43210',
         emergencyContacts: [],

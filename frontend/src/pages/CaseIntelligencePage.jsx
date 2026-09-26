@@ -37,6 +37,7 @@ import {
 import { jsPDF } from 'jspdf';
 import { api, API_BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import VisualStoryboard from '../components/VisualStoryboard';
 
 export const CaseIntelligencePage = ({ setCurrentTab }) => {
   const { user, showToast } = useAuth();
@@ -288,11 +289,15 @@ export const CaseIntelligencePage = ({ setCurrentTab }) => {
   // Handle Generate Brief
   const handleGenerateBrief = async () => {
     try {
-      const res = await api.post(`/cases/${activeCaseId}/brief`);
+      showToast('AI is synthesizing the visual storyboard...', 'info');
+      const payload = {
+        rawDescription: caseDetails.case.description,
+        evidence: caseDetails.evidence.map(e => ({ title: e.title, description: e.userDescription, category: e.incidentCategory }))
+      };
+      const res = await api.post('/ai/synthesize-brief', payload);
       if (res.data.success) {
-        showToast('Case Brief synthesized by AI', 'success');
-        setBriefContent(compileBriefText(res.data.brief));
-        fetchCaseDetails(activeCaseId);
+        showToast('Visual Storyboard Generated Successfully', 'success');
+        setBriefContent(res.data.storyboard);
         setActiveTab('brief');
       }
     } catch (err) {
@@ -888,7 +893,7 @@ export const CaseIntelligencePage = ({ setCurrentTab }) => {
                         className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition flex items-center space-x-1.5"
                       >
                         <FileText size={13} />
-                        <span>View / Generate Case Brief</span>
+                        <span>Generate AI Visual Storyboard</span>
                       </button>
 
                       <button
@@ -1356,7 +1361,7 @@ export const CaseIntelligencePage = ({ setCurrentTab }) => {
                     className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-1.5 shadow-md"
                   >
                     <Sparkles size={14} />
-                    <span>Regenerate Brief</span>
+                    <span>✨ Auto-Generate Storyboard</span>
                   </button>
 
                   {editingBrief ? (
@@ -1380,8 +1385,10 @@ export const CaseIntelligencePage = ({ setCurrentTab }) => {
                 </div>
               </div>
 
-              {/* Editor / Markdown Viewer */}
-              {editingBrief ? (
+              {/* Editor / Markdown Viewer / Visual Storyboard */}
+              {typeof briefContent === 'object' && briefContent !== null ? (
+                <VisualStoryboard storyboard={briefContent} />
+              ) : editingBrief ? (
                 <textarea
                   value={briefContent}
                   onChange={(e) => setBriefContent(e.target.value)}
@@ -1390,7 +1397,7 @@ export const CaseIntelligencePage = ({ setCurrentTab }) => {
                 />
               ) : (
                 <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 whitespace-pre-wrap text-xs text-slate-300 font-mono leading-relaxed max-h-[600px] overflow-y-auto">
-                  {briefContent || 'Click "Regenerate Brief" to formulate your Case Brief.'}
+                  {briefContent || 'Click "Regenerate Brief" to auto-generate a Visual Storyboard of your case.'}
                 </div>
               )}
             </div>

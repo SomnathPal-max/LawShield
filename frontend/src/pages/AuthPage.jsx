@@ -22,6 +22,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
 import { api } from '../services/api';
+import { useAuth0 } from '@auth0/auth0-react';
 
 export const AuthPage = ({ initialMode = 'login', setCurrentTab }) => {
   const { login, register, demoLogin, showToast, user } = useAuth();
@@ -66,86 +67,37 @@ export const AuthPage = ({ initialMode = 'login', setCurrentTab }) => {
     setShowConfirmPassword(false);
   };
 
+  const { loginWithRedirect } = useAuth0();
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.email || !formData.password) {
-      showToast('Please provide both email and password', 'error');
+    setSubmitting(true);
+    // If the user hasn't configured Auth0 in .env.local, use the fallback demo login so the app doesn't crash
+    if (!import.meta.env.VITE_AUTH0_DOMAIN || import.meta.env.VITE_AUTH0_DOMAIN === 'lawshield-demo.us.auth0.com') {
+      showToast('Auth0 credentials missing in .env.local. Falling back to Demo Citizen account.', 'info');
+      await handleDemoQuickLogin('citizen');
       return;
     }
-
-    setSubmitting(true);
-    const res = await login(formData.email.trim(), formData.password);
-    setSubmitting(false);
-
-    if (res?.success) {
-      if (setCurrentTab) {
-        if (res.user?.role === 'lawyer') setCurrentTab('lawyer-dashboard');
-        else if (res.user?.role === 'admin') setCurrentTab('admin');
-        else setCurrentTab('home');
+    await loginWithRedirect({
+      authorizationParams: {
+        screen_hint: 'login'
       }
-    }
+    });
   };
 
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-
-    if (!formData.name.trim() || !formData.email.trim() || !formData.password) {
-      showToast('Please fill in all mandatory fields', 'error');
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      showToast('Passwords do not match', 'error');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
-      return;
-    }
-
-    if (formData.role === 'lawyer' && !formData.barId.trim()) {
-      showToast('Please enter your Bar Council Enrollment Number', 'error');
-      return;
-    }
-
-    // Build payload
-    const payload = {
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      password: formData.password,
-      phone: formData.phone.trim(),
-      role: formData.role,
-    };
-
-    if (formData.role === 'lawyer') {
-      payload.barId = formData.barId.trim();
-      payload.specialization = formData.specialization;
-      payload.experience = Number(formData.experience) || 1;
-    }
-
-    // Include pre-configured emergency contact if provided
-    if (formData.emergencyName.trim() && formData.emergencyPhone.trim()) {
-      payload.emergencyContacts = [
-        {
-          name: formData.emergencyName.trim(),
-          relationship: formData.emergencyRelationship,
-          phone: formData.emergencyPhone.trim(),
-        }
-      ];
-    }
-
     setSubmitting(true);
-    const res = await register(payload);
-    setSubmitting(false);
-
-    if (res?.success) {
-      if (setCurrentTab) {
-        if (res.user?.role === 'lawyer') setCurrentTab('lawyer-dashboard');
-        else if (res.user?.role === 'admin') setCurrentTab('admin');
-        else setCurrentTab('home');
-      }
+    if (!import.meta.env.VITE_AUTH0_DOMAIN || import.meta.env.VITE_AUTH0_DOMAIN === 'lawshield-demo.us.auth0.com') {
+      showToast('Auth0 credentials missing in .env.local. Falling back to Demo Citizen account.', 'info');
+      await handleDemoQuickLogin('citizen');
+      return;
     }
+    await loginWithRedirect({
+      authorizationParams: {
+        screen_hint: 'signup'
+      }
+    });
   };
 
   const handleDemoQuickLogin = async (persona) => {
@@ -155,6 +107,7 @@ export const AuthPage = ({ initialMode = 'login', setCurrentTab }) => {
     if (res?.success && setCurrentTab) {
       if (persona === 'lawyer') setCurrentTab('lawyer-dashboard');
       else if (persona === 'admin') setCurrentTab('admin');
+      else if (persona === 'teacher') setCurrentTab('teacher-dashboard');
       else setCurrentTab('home');
     }
   };

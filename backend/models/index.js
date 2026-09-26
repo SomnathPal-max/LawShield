@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['user', 'lawyer', 'admin'], default: 'user' },
+  role: { type: String, enum: ['user', 'lawyer', 'admin', 'teacher'], default: 'user' },
   phone: { type: String, default: '' },
   emergencyContacts: [
     {
@@ -14,6 +14,37 @@ const userSchema = new mongoose.Schema({
       relationship: { type: String, default: 'Family' },
     }
   ],
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Course Schema
+const courseSchema = new mongoose.Schema({
+  teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  price: { type: Number, default: 0 },
+  thumbnail: { type: String, default: '' },
+  enrolledCount: { type: Number, default: 0 },
+  status: { type: String, enum: ['draft', 'published'], default: 'draft' },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// VideoLesson Schema
+const videoLessonSchema = new mongoose.Schema({
+  courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+  title: { type: String, required: true },
+  scriptText: { type: String, required: true },
+  videoUrl: { type: String, default: '' },
+  isAiGenerated: { type: Boolean, default: true },
+  status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'completed' },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Enrollment Schema
+const enrollmentSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+  progress: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -292,5 +323,8 @@ module.exports = {
   CaseBrief: mongoose.models.CaseBrief || mongoose.model('CaseBrief', caseBriefSchema),
   CaseQuestion: mongoose.models.CaseQuestion || mongoose.model('CaseQuestion', caseQuestionSchema),
   CaseShare: mongoose.models.CaseShare || mongoose.model('CaseShare', caseShareSchema),
+  Course: mongoose.models.Course || mongoose.model('Course', courseSchema),
+  VideoLesson: mongoose.models.VideoLesson || mongoose.model('VideoLesson', videoLessonSchema),
+  Enrollment: mongoose.models.Enrollment || mongoose.model('Enrollment', enrollmentSchema),
 };
 

@@ -72,6 +72,18 @@ exports.triggerSOS = (req, res) => {
   }
 };
 
+// Get Crime Zones
+exports.getCrimeZones = (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      zones: store.crimeZones || []
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch crime zones' });
+  }
+};
+
 // Get nearby emergency help resources
 exports.getNearbyResources = (req, res) => {
   try {
